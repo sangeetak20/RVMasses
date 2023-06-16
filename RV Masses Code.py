@@ -18,6 +18,7 @@ import os
 
 
 file =  open('Example_file.txt', 'r')
+#finding all of the values from the file
 class Target: 
     def __init__(ID, Mstar, Mplanet, Period, Eccentricity, Prev_rvs, File_with_prev_rvs, No_obs, t_ref, t_obs, \
                 t_end): 
@@ -78,18 +79,19 @@ class RV_obs:
     #year in seconds
     yr = 3.154*10**7 
 
+    #creating times that we will use
     def Generate_times(t_obs, t_end, num = No_obs): 
         times = np.linspace(t_obs, t_end, no_obs)
         return times
-    
+    #finding the K value    
     def K_value(times, Mstar, Mplanet, Period, Eccentricity): 
         K = G_sqrt / (np.sqrt(1 - Eccentricity**2)) * Mplanet / M_J * (Mstar / M_sun)**(-2/3) * (Period / yr)**(-1/3)
         return K 
-    
+    #Generating RV values    
     def RV_values(K,times, t_ref, Period ): 
         RV_values = -K*np.sin(2*np.pi*(times - t_ref)/Period)
         return RV_values
-    
+    #generating RV vs time plot    
     def RV_plot(times, RV_values): 
         plt.figure()
         plt.scatter(times, RV_values)
