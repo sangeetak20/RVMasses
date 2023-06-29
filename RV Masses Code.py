@@ -168,3 +168,48 @@ class RV_obs(Target):
             plt.ylabel('RV')
             plt.show()
         return fig
+
+class radvel_fit(RV_obs):
+    def __init__(self, RV_obs): 
+        super().__init__(self, RV_obs)
+    
+    def __repr(self)
+        return 'radvel fit class'
+    
+    def parameters(): 
+        params = no_pl
+        #need a parameter for each planet so I am looping through how many planets there are and then 
+        #adding those values to the parameter values 
+        #defining the basis for the parameter values 
+        params = radvel.Parameters(2,basis='per tc e w k')
+        for i in range(len(no_pl)): 
+            time_base = (times.min() + times.max())/2
+            params[f'per{i}'] = radvel.Parameter(value = )
+            params[f'tc{i}'] = radvel.Parameter(value = )
+            params[f'secosw{i}'] = radvel.Parameter(value = )
+            params[f'sesinw{i}'] = radvel.Parameter(value = )
+            params[f'logk{i}'] = radvel.Parameter(value = )
+            
+            mod = radvel.RVModel(params, time_base=time_base)
+            mod.params['dvdt'] = radvel.Parameter(value= -0.02)
+            mod.params['curv'] = radvel.Parameter(value= 0.01)
+            
+        '''
+        the rest of the code below is from the intro to astro github tutorial 
+        ''' 
+        mod = initialize_model() # initialize radvel.RVModel object
+        like = radvel.likelihood.RVLikelihood(mod, data.t, data.vel, data.errvel, '_HIRES')
+        like.params['gamma_HIRES'] = radvel.Parameter(value=0.1)
+        like.params['jit_HIRES'] = radvel.Parameter(value=1.0)
+        like.params['secosw1'].vary = False # set as false because we are assuming circular orbit
+        like.params['sesinw1'].vary = False 
+        like.params['secosw2'].vary = False # set as false because we are assuming circular orbit
+        like.params['sesinw2'].vary = False 
+        
+        post = radvel.posterior.Posterior(like) # initialize radvel.Posterior object
+
+        res  = optimize.minimize(
+            post.neglogprob_array,     # objective function is negative log likelihood
+            post.get_vary_params(),    # initial variable parameters
+            method='Powell',           # Nelder-Mead also works
+            )
