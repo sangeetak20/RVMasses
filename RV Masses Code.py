@@ -17,6 +17,7 @@ import os
 # In[ ]:
 #planet class that inherits the values from the target class
 #reads in data file about the planet information 
+# We should make a documentation file that specifies how the data file should be structured, and include an example data file in the repo.
 class Planet(): 
     def __init__(self, planet_file): 
         #reading in the file for planets
@@ -47,6 +48,9 @@ class Target(Planet):
         read_file = file.readlines()
         #opens the file and reads it in 
         file = open(file, 'r')
+        # opening a file this way causes python to keep it open, which is fine, but another way to do it is to use the following format:
+        # with open(file, 'r') as f:
+        #	for line in f.read_lines() ... 
         for line in read_file:
             #goes through each line and searches for keyword and assigns the value of the keyword to itself
             if line.split(' ')[0] == 'ID:': 
@@ -61,6 +65,7 @@ class Target(Planet):
         if prev_rv_data != None:
             #reads in previous rv data and assigns them variables
             #these will be used to create plots
+            # nice job setting this up!
             file_prev_rv = pd.read_csv(prev_rv_data, header = 0)
 
             prev_rv_time = file_prev_rv['time'] 
@@ -106,6 +111,7 @@ class RV_obs(Target):
     #they also have to add the number of observations to establish the cadence 
     #for now we are assuming an equal cadence rather than a random one 
     def Generate_times(self, t_obs, t_end, No_obs): 
+    	# For each function, we'll want to have a docstring which explains what inputs are required/what type of inputs are needed e.g. does t_obs have to be an array? Here are some examples: https://peps.python.org/pep-0257/ or you can look at the predictrvs.py file I shared
         times = np.linspace(t_obs, t_end, No_obs)
         self.times = times
         return self.times
@@ -136,6 +142,7 @@ class RV_obs(Target):
         return self.RV_values
     
     #plots the RV data created from the previous function
+    # This looks good! My only comment is that you can move some of the code that is common to each mode outside of the if/elif statements
     def RV_plot(self, mode = 'sim'): 
         #simulated data is plotted
         if mode == 'sim': 
