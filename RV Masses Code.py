@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 # coding: utf-8
 
-# In[1]:
+# In[51]:
 
 
 import numpy as np
@@ -13,59 +13,61 @@ from scipy.interpolate import interp1d
 import numpy as np
 import os
 
+from scipy import optimize
+import corner
+import radvel
+import radvel.likelihood
+from radvel.plot import orbit_plots, mcmc_plots
 
-# In[ ]:
+
+# In[52]:
+
+
 #planet class that inherits the values from the target class
 #reads in data file about the planet information 
-# We should make a documentation file that specifies how the data file should be structured, and include an example data file in the repo.
 class Planet(): 
-    def __init__(self, planet_file): 
-        #reading in the file for planets
-        data = pd.read_csv(planet_file, header = 0)
-        no_pl = len(data) - 1
-        PlanetID = data['PlanetID']
-        Mplanet = data['MPlanet'].values
-        Eccentricity = data['Eccentricity'].values
-        Period = data['Period'].values
+    def __init__(self, planetID, Period, Eccentricity, Mplanet): 
         
-        self.no_pl = no_pl
-        self.PlanetID = PlanetID
+        #the number of planets will be the length of the csv file minus the header
+        no_pl = len(data) - 1
+        
+        self.PlanetID = planetID
         self.Mplanet = Mplanet
         self.Eccentricity = Eccentricity
         self.Period = Period
         
-        
-# In[ ]:
+    #defining what the name of the class is when an object created is called   
+    def __repr__(self):
+        return 'Planet Class'
+
+
+# In[82]:
 
 
 #opens example file that will show information about system 
-class Target(Planet): 
+class Target(): 
+    #needs a file for the target info and optional previous RV data
     def __init__(self, file, prev_rv_data = None): 
-        #inherits planet class
+        #inherits planet class and creates empty array so that planet info will be stored
         self.Planets = []
-        super().__init__(Planet, self)
+        #super().__init__(Planet, self)
         
-        read_file = file.readlines()
         #opens the file and reads it in 
-        file = open(file, 'r')
-        # opening a file this way causes python to keep it open, which is fine, but another way to do it is to use the following format:
-        # with open(file, 'r') as f:
-        #	for line in f.read_lines() ... 
-        for line in read_file:
-            #goes through each line and searches for keyword and assigns the value of the keyword to itself
-            if line.split(' ')[0] == 'ID:': 
-                ID = line.split(' ')[-1]
-            self.ID = ID
-            
-            if line.split(' ')[0] == 'Mstar:': 
-                Mstar = line.split(' ')[-1]
-            Mstar.self == Mstar
+        with open(file, 'r') as f:
+            for line in f.readlines():
+                #goes through each line and searches for keyword and assigns the value of the keyword to itself
+                if line.split(' ')[0] == 'ID:': 
+                    ID = line.split(' ')[-1]
+                    self.ID = ID
+
+                if line.split(' ')[0] == 'Mstar:': 
+                    Mstar = line.split(' ')[-1]
+                    Mstar.self == Mstar
             
         #if user has previous RV data
         if prev_rv_data != None:
             #reads in previous rv data and assigns them variables
             #these will be used to create plots
-            # nice job setting this up!
             file_prev_rv = pd.read_csv(prev_rv_data, header = 0)
 
             prev_rv_time = file_prev_rv['time'] 
@@ -78,15 +80,44 @@ class Target(Planet):
             self.prev_rv_errvel = prev_rv_errvel
             self.prev_rv_mnvel = prev_rv_mnvel
             
-        def load_planets(self, planet_file, npl):
-            for i in range(npl):
-                #subset of file
-                subset = 
-                planet = Planet(subset)
-                self.Planets.append(planet)
+    #defining what the name of the class is when an object created is called               
+    def __repr__(self):
+        return 'Target Class'
+
+    #creating a function that creates multiple objects of the planet class to create multiple planets
+    #this will be read in by the csv file provided into the planet class
+    def load_planets(self, planet_file):
+
+        #reading in the planet file and assigning it variable data 
+        data_pl = pd.read_csv(planet_file, header = 0)
+        
+        no_pl = len(data_pl) - 1
+
+        for i in range(no_pl):
+            #subset of file will be the ith row that is iterated 
+            subset = data_pl[:i]
+            #creating planet object
+            planet = Planet()
+            #getting the values from the file for each planet in the system 
+            planetID = subset['PlanetID'].values
+            #appending values to a planet object
+            planet.planetID = planetID
+
+            Mplanet = subset['Mplanet'].values
+            planet.Mplanet = Mplanet
+
+            Eccentricity = subset['Eccentricity'].values
+            planet.Eccentricity = Eccentricity
+
+            Period = subset['Period'].values
+            planet.Period = Period
+
+            #creating individual objects for each planet and adding them to the list as defined in __init__
+            planet = Planet(planetID, Period, Eccentricity, Mplanet)
+            self.Planets.append(planet)
 
 
-# In[ ]:
+# In[41]:
 
 
 #creates the plots and the simulated data points
@@ -111,16 +142,15 @@ class RV_obs(Target):
     #they also have to add the number of observations to establish the cadence 
     #for now we are assuming an equal cadence rather than a random one 
     def Generate_times(self, t_obs, t_end, No_obs): 
-    	# For each function, we'll want to have a docstring which explains what inputs are required/what type of inputs are needed e.g. does t_obs have to be an array? Here are some examples: https://peps.python.org/pep-0257/ or you can look at the predictrvs.py file I shared
         times = np.linspace(t_obs, t_end, No_obs)
         self.times = times
         return self.times
     
     #K value is the semi amplitude of the sin curve that will be generated from the RV data
-    def K_value(self, times): 
+    def K_value(self, times, planet, star): 
         #takes from the planet class to calculate the K value
-        K = G_sqrt / (np.sqrt(1 - self.Planet.Eccentricity**2)) * self.Planet.Mplanet / M_J * (self.Planet.Mstar / M_sun)**(-2/3) * \
-        (self.Planet.Period / yr)**(-1/3)
+        K = G_sqrt / (np.sqrt(1 - planet.Eccentricity**2)) * planet.Mplanet / M_J * \
+        (planet.Mstar / M_sun)**(-2/3) * (planet.Period / yr)**(-1/3)
         self.K = K
         return self.K 
     
@@ -131,10 +161,11 @@ class RV_obs(Target):
         RVs = []
         #this is to make sure that we get multiple RV data points for multiple planets for more than one planet
         #loops through the number of planets and goes into the Planet class to get the data 
-        for planet in self.Planet.PlanetID: 
-            K = K_value(times, Planet, Target)
+        for planet in Star.Planets: 
+            K = K_value(times, planet, Star)
+            
             #takes from the planet class and the K_value class to calculate the RV data point
-            RV_pl = -K*np.sin(2*np.pi*(times - t_ref)/self.Planet.Period) + noise*np.random.randn(len(times))
+            RV_pl = -K*np.sin(2*np.pi*(times - t_ref)/planet.Period) + noise*np.random.randn(len(times))
             #adds RVs for every planet together 
             RV_values += RV_pl
             #all RVs is the final RV
@@ -142,7 +173,6 @@ class RV_obs(Target):
         return self.RV_values
     
     #plots the RV data created from the previous function
-    # This looks good! My only comment is that you can move some of the code that is common to each mode outside of the if/elif statements
     def RV_plot(self, mode = 'sim'): 
         #simulated data is plotted
         if mode == 'sim': 
@@ -168,6 +198,10 @@ class RV_obs(Target):
             plt.ylabel('RV')
             plt.show()
         return fig
+
+
+# In[ ]:
+
 
 class radvel_fit(RV_obs):
     def __init__(self, RV_obs): 
@@ -213,3 +247,6 @@ class radvel_fit(RV_obs):
             post.get_vary_params(),    # initial variable parameters
             method='Powell',           # Nelder-Mead also works
             )
+
+
+
