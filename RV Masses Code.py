@@ -20,16 +20,13 @@ import radvel.likelihood
 from radvel.plot import orbit_plots, mcmc_plots
 
 
-# In[52]:
+# In[108]:
 
 
 #planet class that inherits the values from the target class
 #reads in data file about the planet information 
 class Planet(): 
     def __init__(self, planetID, Period, Eccentricity, Mplanet): 
-        
-        #the number of planets will be the length of the csv file minus the header
-        no_pl = len(data) - 1
         
         self.PlanetID = planetID
         self.Mplanet = Mplanet
@@ -41,10 +38,10 @@ class Planet():
         return 'Planet Class'
 
 
-# In[82]:
+# In[109]:
 
 
-#opens example file that will show information about system 
+#Target class loads in system data, gets attributes for multiple planets, and gets data about previous rv data
 class Target(): 
     #needs a file for the target info and optional previous RV data
     def __init__(self, file, prev_rv_data = None): 
@@ -53,16 +50,9 @@ class Target():
         #super().__init__(Planet, self)
         
         #opens the file and reads it in 
-        with open(file, 'r') as f:
-            for line in f.readlines():
-                #goes through each line and searches for keyword and assigns the value of the keyword to itself
-                if line.split(' ')[0] == 'ID:': 
-                    ID = line.split(' ')[-1]
-                    self.ID = ID
-
-                if line.split(' ')[0] == 'Mstar:': 
-                    Mstar = line.split(' ')[-1]
-                    Mstar.self == Mstar
+        target_file = pd.read_csv(file, header = 0)
+        ID = target_file['ID'][0]
+        Mstar = target_file['Mstar'][0]
             
         #if user has previous RV data
         if prev_rv_data != None:
@@ -96,28 +86,22 @@ class Target():
         for i in range(no_pl):
             #subset of file will be the ith row that is iterated 
             subset = data_pl[:i]
-            #creating planet object
-            planet = Planet()
+            
             #getting the values from the file for each planet in the system 
             planetID = subset['PlanetID'].values
-            #appending values to a planet object
-            planet.planetID = planetID
-
-            Mplanet = subset['Mplanet'].values
-            planet.Mplanet = Mplanet
+            
+            Mplanet = subset['MPlanet'].values
 
             Eccentricity = subset['Eccentricity'].values
-            planet.Eccentricity = Eccentricity
 
             Period = subset['Period'].values
-            planet.Period = Period
 
             #creating individual objects for each planet and adding them to the list as defined in __init__
             planet = Planet(planetID, Period, Eccentricity, Mplanet)
             self.Planets.append(planet)
 
 
-# In[41]:
+# In[110]:
 
 
 #creates the plots and the simulated data points
@@ -218,11 +202,11 @@ class radvel_fit(RV_obs):
         params = radvel.Parameters(2,basis='per tc e w k')
         for i in range(len(no_pl)): 
             time_base = (times.min() + times.max())/2
-            params[f'per{i}'] = radvel.Parameter(value = )
+            params[f'per{i}'] = radvel.Parameter(value = planet[i].Period)
             params[f'tc{i}'] = radvel.Parameter(value = )
-            params[f'secosw{i}'] = radvel.Parameter(value = )
-            params[f'sesinw{i}'] = radvel.Parameter(value = )
-            params[f'logk{i}'] = radvel.Parameter(value = )
+            params[f'e{i}'] = radvel.Parameter(value = )
+            params[f'w{i}'] = radvel.Parameter(value = )
+            params[f'k{i}'] = radvel.Parameter(value = )
             
             mod = radvel.RVModel(params, time_base=time_base)
             mod.params['dvdt'] = radvel.Parameter(value= -0.02)
@@ -247,6 +231,5 @@ class radvel_fit(RV_obs):
             post.get_vary_params(),    # initial variable parameters
             method='Powell',           # Nelder-Mead also works
             )
-
 
 
