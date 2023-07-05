@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 # coding: utf-8
 
-# In[51]:
+# In[1]:
 
 
 import numpy as np
@@ -20,15 +20,15 @@ import radvel.likelihood
 from radvel.plot import orbit_plots, mcmc_plots
 
 
-# In[108]:
+# In[125]:
 
 
 #planet class that inherits the values from the target class
 #reads in data file about the planet information 
 class Planet(): 
-    def __init__(self, planetID, Period, Eccentricity, Mplanet): 
+    def __init__(self, PlanetID, Period, Eccentricity, Mplanet): 
         
-        self.PlanetID = planetID
+        self.PlanetID = PlanetID
         self.Mplanet = Mplanet
         self.Eccentricity = Eccentricity
         self.Period = Period
@@ -38,7 +38,7 @@ class Planet():
         return 'Planet Class'
 
 
-# In[109]:
+# In[146]:
 
 
 #Target class loads in system data, gets attributes for multiple planets, and gets data about previous rv data
@@ -47,18 +47,25 @@ class Target():
     def __init__(self, file, prev_rv_data = None): 
         #inherits planet class and creates empty array so that planet info will be stored
         self.Planets = []
-        #super().__init__(Planet, self)
+        
+        self.file = file
         
         #opens the file and reads it in 
-        target_file = pd.read_csv(file, header = 0)
+        target_file = pd.read_csv(self.file, header = 0)
         ID = target_file['ID'][0]
         Mstar = target_file['Mstar'][0]
+        
+        self.ID = ID
+        self.Mstar = Mstar
+        self.prev_rv_data = None
             
         #if user has previous RV data
         if prev_rv_data != None:
             #reads in previous rv data and assigns them variables
             #these will be used to create plots
+            
             file_prev_rv = pd.read_csv(prev_rv_data, header = 0)
+            self.prev_rv_data = file_prev_rv
 
             prev_rv_time = file_prev_rv['time'] 
             prev_rv_bjd = file_prev_rv['bjd']
@@ -72,7 +79,7 @@ class Target():
             
     #defining what the name of the class is when an object created is called               
     def __repr__(self):
-        return 'Target Class'
+        return 'Target Class:'#, self.Target.ID
 
     #creating a function that creates multiple objects of the planet class to create multiple planets
     #this will be read in by the csv file provided into the planet class
@@ -81,45 +88,47 @@ class Target():
         #reading in the planet file and assigning it variable data 
         data_pl = pd.read_csv(planet_file, header = 0)
         
-        no_pl = len(data_pl) - 1
+        no_pl = len(data_pl)
 
         for i in range(no_pl):
             #subset of file will be the ith row that is iterated 
-            subset = data_pl[:i]
+            subset = data_pl.iloc[i]
             
             #getting the values from the file for each planet in the system 
-            planetID = subset['PlanetID'].values
-            
-            Mplanet = subset['MPlanet'].values
-
-            Eccentricity = subset['Eccentricity'].values
-
-            Period = subset['Period'].values
+            planetID = subset['PlanetID']
+            mplanet = subset['MPlanet']
+            eccentricity = subset['Eccentricity']
+            period = subset['Period']
 
             #creating individual objects for each planet and adding them to the list as defined in __init__
-            planet = Planet(planetID, Period, Eccentricity, Mplanet)
+            planet = Planet(planetID, period, eccentricity, mplanet)
             self.Planets.append(planet)
 
 
-# In[110]:
+# In[127]:
+
+
+#square root of G
+G_sqrt = 28.4329
+
+#mass of Jupiter in grams
+M_J = 1.899 * 10**30
+
+#mass of Sun in grams 
+M_sun = 1.989*10**33
+
+#year in seconds
+yr = 3.154*10**7 
+
+
+# In[197]:
 
 
 #creates the plots and the simulated data points
 class RV_obs(Target): 
     def __init__(self, Target): 
-        super().__init__(self, Target)
+        self.Target = Target
     
-    #square root of G
-    G_sqrt = 28.4329
-
-    #mass of Jupiter in grams
-    M_J = 1.899 * 10**30
-
-    #mass of Sun in grams 
-    M_sun = 1.989*10**33
-
-    #year in seconds
-    yr = 3.154*10**7 
     
     #generates the times that the user will be observing over
     #user must enter in the time they are planning on starting to observe and the date they want to end 
@@ -134,19 +143,20 @@ class RV_obs(Target):
     def K_value(self, times, planet, star): 
         #takes from the planet class to calculate the K value
         K = G_sqrt / (np.sqrt(1 - planet.Eccentricity**2)) * planet.Mplanet / M_J * \
-        (planet.Mstar / M_sun)**(-2/3) * (planet.Period / yr)**(-1/3)
+        (star.Mstar / M_sun)**(-2/3) * (planet.Period / yr)**(-1/3)
         self.K = K
         return self.K 
     
     #creates the RV values that will be put into the RV plot
-    def sim_RVs(self): 
+    def sim_RVs(self, t_obs, t_end, No_obs, t_ref, noise = 0): 
         times = self.Generate_times(t_obs, t_end, No_obs)
         Star = self.Target
         RVs = []
+        RV_values = 0
         #this is to make sure that we get multiple RV data points for multiple planets for more than one planet
         #loops through the number of planets and goes into the Planet class to get the data 
         for planet in Star.Planets: 
-            K = K_value(times, planet, Star)
+            K = self.K_value(times, planet, Star)
             
             #takes from the planet class and the K_value class to calculate the RV data point
             RV_pl = -K*np.sin(2*np.pi*(times - t_ref)/planet.Period) + noise*np.random.randn(len(times))
@@ -165,6 +175,8 @@ class RV_obs(Target):
             plt.xlabel('Time (JD)')
             plt.ylabel('RV')
             plt.show()
+            self.fig = fig
+            return self.fig
         #previous data loaded in from Target class is plotted
         elif mode == 'prev': 
             fig = plt.figure()
@@ -172,6 +184,8 @@ class RV_obs(Target):
             plt.xlabel('Time (JD)')
             plt.ylabel('RV')
             plt.show()
+            self.fig = fig
+            return fig
         #both simulated data and previous data are plotted
         elif mode == 'both': 
             fig = plt.figure()
@@ -181,7 +195,8 @@ class RV_obs(Target):
             plt.xlabel('Time (JD)')
             plt.ylabel('RV')
             plt.show()
-        return fig
+            self.fig = fig
+            return fig
 
 
 # In[ ]:
@@ -191,11 +206,10 @@ class radvel_fit(RV_obs):
     def __init__(self, RV_obs): 
         super().__init__(self, RV_obs)
     
-    def __repr(self)
+    def __repr(self):
         return 'radvel fit class'
     
     def parameters(): 
-        params = no_pl
         #need a parameter for each planet so I am looping through how many planets there are and then 
         #adding those values to the parameter values 
         #defining the basis for the parameter values 
@@ -204,9 +218,9 @@ class radvel_fit(RV_obs):
             time_base = (times.min() + times.max())/2
             params[f'per{i}'] = radvel.Parameter(value = planet[i].Period)
             params[f'tc{i}'] = radvel.Parameter(value = )
-            params[f'e{i}'] = radvel.Parameter(value = )
-            params[f'w{i}'] = radvel.Parameter(value = )
-            params[f'k{i}'] = radvel.Parameter(value = )
+            params[f'e{i}'] = radvel.Parameter(value = 0.8)
+            params[f'w{i}'] = radvel.Parameter(value = 0.02)
+            params[f'k{i}'] = radvel.Parameter(value = planet[i].RV_obs.K_value)
             
             mod = radvel.RVModel(params, time_base=time_base)
             mod.params['dvdt'] = radvel.Parameter(value= -0.02)
@@ -231,5 +245,6 @@ class radvel_fit(RV_obs):
             post.get_vary_params(),    # initial variable parameters
             method='Powell',           # Nelder-Mead also works
             )
+
 
 
