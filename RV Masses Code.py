@@ -103,6 +103,7 @@ class Target():
             #creating individual objects for each planet and adding them to the list as defined in __init__
             planet = Planet(planetID, period, eccentricity, mplanet)
             self.Planets.append(planet)
+        ### This function could return something - probably the updated planets list 
 
 
 # In[127]:
@@ -245,6 +246,3 @@ class radvel_fit(RV_obs):
             post.get_vary_params(),    # initial variable parameters
             method='Powell',           # Nelder-Mead also works
             )
-
-
-
