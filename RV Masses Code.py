@@ -20,26 +20,26 @@ import radvel.likelihood
 from radvel.plot import orbit_plots, mcmc_plots
 
 
-# In[125]:
+# In[269]:
 
 
 #planet class that inherits the values from the target class
 #reads in data file about the planet information 
 class Planet(): 
-    def __init__(self, PlanetID, Period, Eccentricity, Mplanet, tc): 
+    def __init__(self, PlanetID, Period, Eccentricity, Mplanet, Tc): 
         
         self.PlanetID = PlanetID
         self.Mplanet = Mplanet
         self.Eccentricity = Eccentricity
         self.Period = Period
-        self.tc = tc
+        self.Tc = Tc
         
     #defining what the name of the class is when an object created is called   
     def __repr__(self):
         return 'Planet Class'
 
 
-# In[146]:
+# In[270]:
 
 
 #Target class loads in system data, gets attributes for multiple planets, and gets data about previous rv data
@@ -95,7 +95,7 @@ class Target():
         no_pl = len(data_pl)
         self.no_pl = no_pl
 
-        for i in range(no_pl):
+        for i in range(self.no_pl):
             #subset of file will be the ith row that is iterated 
             subset = data_pl.iloc[i]
             
@@ -104,6 +104,7 @@ class Target():
             mplanet = subset['MPlanet']
             eccentricity = subset['Eccentricity']
             period = subset['Period']
+            #tc = time of transit
             tc = subset['tc']
 
             #creating individual objects for each planet and adding them to the list as defined in __init__
@@ -127,16 +128,17 @@ M_sun = 1.989*10**33
 yr = 3.154*10**7 
 
 
-# In[212]:
+# In[271]:
 
 
 #creates the plots and the simulated data points
 class RV_obs(Target): 
-    def __init__(self, Target, t_obs, t_end, No_obs): 
+    def __init__(self, Target, t_obs, t_end, No_obs, t_ref): 
         self.Target = Target
         self.t_obs = t_obs
         self.t_end = t_end
         self.No_obs = No_obs
+        self.t_ref = t_ref
     
     
     #generates the times that the user will be observing over
@@ -157,7 +159,7 @@ class RV_obs(Target):
         return self.K 
     
     #creates the RV values that will be put into the RV plot
-    def sim_RVs(self, t_ref, noise = 0): 
+    def sim_RVs(self, noise = 0): 
         times = self.Generate_times()
         Star = self.Target
         RVs = []
@@ -170,7 +172,7 @@ class RV_obs(Target):
             K = self.K_value(times, planet, Star)
             
             #takes from the planet class and the K_value class to calculate the RV data point
-            RV_pl = -K*np.sin(2*np.pi*(times - t_ref)/planet.Period) + noise*np.random.randn(len(times))
+            RV_pl = -K*np.sin(2*np.pi*(times - self.t_ref)/planet.Period) + noise*np.random.randn(len(times))
             #adds RVs for every planet together 
             RV_values += RV_pl
             #all RVs is the final RV
@@ -208,8 +210,11 @@ class RV_obs(Target):
             plt.legend()
             self.fig = fig
             return self.fig
-
-    def parameters(self): 
+        
+    #creating function for the parameters
+    #parameters to vary is by default an empty list, if user wants to input parameters to vary then they will have to 
+    #define it when they call this function 
+    def parameters(self, params_to_vary = []): 
         #need a parameter for each planet so I am looping through how many planets there are and then 
         #adding those values to the parameter values 
         #defining the basis for the parameter values 
@@ -217,11 +222,11 @@ class RV_obs(Target):
         no_pl = self.Target.no_pl
         
         params = radvel.Parameters(2,basis='per tc e w k')
-        for i in range(len(no_pl)): 
-            time_base = (times.min() + times.max())/2
+        for i in range(no_pl): 
+            time_base = (self.times.min() + self.times.max())/2
             params[f'per{i}'] = radvel.Parameter(value = Star.Planets[i].Period)
-            if Star.Planets.tc == np.nan: 
-                tc = np.random.uniform(times.min(), times.max())
+            if Star.Planets.Tc == np.nan: 
+                tc = np.random.uniform(self.times.min(), self.times.max())
                 params[f'tc{i}'] = radvel.Parameter(value = tc)
             else: 
                 params[f'tc{i}'] = radvel.Parameter(value = Star.Planets[i].tc)
@@ -238,52 +243,51 @@ class RV_obs(Target):
         #make a set a gamma_prevtelescope and jit_prevtelescope and a set for the simulated telescope
         #get name of telescope used in previous observations and use that to track uncertainty in telescope 
         #do the same for simulated telescope data 
-        like.params[f'gamma_'{self.Target.prev_telescope}] = radvel.Parameter(value = 0.1)
-        like.params[f'jit_'{self.Target.prev_telescope}] = radvel.Parameter(value = 1.0)
-        like.params[f'gamma_'{self.Target.telescope}] = radvel.Parameter(value=0.1)
-        like.params[f'jit_'{self.Target.telescope}] = radvel.Parameter(value=1.0)
+        like.params[f'gamma_{self.Target.prev_telescope}'] = radvel.Parameter(value = 0.1)
+        like.params[f'jit_{self.Target.prev_telescope}'] = radvel.Parameter(value = 1.0)
+        like.params[f'gamma_{self.Target.telescope}'] = radvel.Parameter(value=0.1)
+        like.params[f'jit_{self.Target.telescope}'] = radvel.Parameter(value=1.0)
         
         #for each of the parameters for each planet, set them to vary as true or false
         #want user to pass in a list of parameters they want to vary 
-        #created a list of parameters that will be varied
         
-        '''
-        I am thinking that we can create a list of parameters that could be varied and then pass that list into 
-        another function and ask the user what parameters that would want to vary 
-        '''
-        params_to_vary = []
+        #for loop is for each planet's parameters 
         for i in range(len(no_pl)): 
-            like.params[f'secosw'{i}].vary = False
-            like.params[f'sesinw'{i}].vary = False
-            like.params[f'per'{i}].vary = False
-            like.params[f'tc'{i}].vary = False
-            #pasing the name of the parameter to vary into the list of parameters
-            params_to_vary = np.append(f'like.params[secosw'{i}'].vary', params_to_vary)
-            params_to_vary = np.append(f'like.params[sesinw'{i}'].vary', params_to_vary)
-            params_to_vary = np.append(f'like.params[per'{i}'].vary', params_to_vary)
-            params_to_vary = np.append(f'like.params[tc'{i}'].vary', params_to_vary)
-            
-        like.params[f'gamma_'{self.Target.prev_telescope}].vary = False
-        like.params[f'jit_'{self.Target.prev_telescope}].vary = False
-        like.params[f'gamma_'{self.Target.telescope}].vary = False
-        like.params[f'jit_'{self.Target.telescope}].vary = False
+            like.params[f'secosw{i}'].vary = False
+            like.params[f'sesinw{i}'].vary = False
+            like.params[f'per{i}'].vary = False
+            like.params[f'tc{i}'].vary = False
+        #parameters that are for the previous telescope from previous data and the current Target telescope    
+        like.params[f'gamma_{self.Target.prev_telescope}'].vary = False
+        like.params[f'jit_{self.Target.prev_telescope}'].vary = False
+        like.params[f'gamma_{self.Target.telescope}'].vary = False
+        like.params[f'jit_{self.Target.telescope}'].vary = False
         
-        #pasing the name of the parameter to vary into the list of parameters
-        params_to_vary = np.append(f'like.params[gamma_'{self.Target.prev_telescope}'].vary', params_to_vary)
-        params_to_vary = np.append(f'like.params[jit_'{self.Target.prev_telescope}'].vary', params_to_vary)
-        params_to_vary = np.append(f'like.params[gamma_'{self.Target.telescope}'].vary', params_to_vary)
-        params_to_vary = np.append(f'like.params[jit_'{self.Target.telescope}'].vary', params_to_vary)
-        
-        
+        #looping though array of parameters to vary and setting them equal to true 
+        if len(params_to_vary) > 0:
+            for i in params_to_vary:
+                like.params[params_to_vary[i]].vary = True
         
         '''
         the rest of the code below is from the intro to astro github tutorial 
         ''' 
-
-        post = radvel.posterior.Posterior(like) # initialize radvel.Posterior object
-
+        #initializes radvel.Posterior object 
+        post = radvel.posterior.Posterior(like)
+        
+        #maximizes likelihood
         res  = optimize.minimize(
             post.neglogprob_array,     # objective function is negative log likelihood
             post.get_vary_params(),    # initial variable parameters
-            method='Powell',           # Nelder-Mead also works
+            method='Nelder-Mead',           # Powell also works
             )
+        
+        #ready-made plots that radvel has
+        matplotlib.rcParams['font.size'] = 12
+
+        RVPlot = orbit_plots.MultipanelPlot(post)
+        RVPlot.plot_multipanel()
+
+        matplotlib.rcParams['font.size'] = 18
+        return RVPlot
+
+
