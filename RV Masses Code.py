@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 # coding: utf-8
 
-# In[1]:
+# In[368]:
 
 
 import numpy as np
@@ -12,6 +12,7 @@ import math
 from scipy.interpolate import interp1d
 import numpy as np
 import os
+import astropy.units as a
 
 from scipy import optimize
 import corner
@@ -20,26 +21,28 @@ import radvel.likelihood
 from radvel.plot import orbit_plots, mcmc_plots
 
 
-# In[269]:
+# In[363]:
 
 
 #planet class that inherits the values from the target class
 #reads in data file about the planet information 
 class Planet(): 
-    def __init__(self, PlanetID, Period, Eccentricity, Mplanet, Tc): 
+    def __init__(self, PlanetID, Period, Eccentricity, Mplanet, Tc, K=None): 
         
         self.PlanetID = PlanetID
         self.Mplanet = Mplanet
         self.Eccentricity = Eccentricity
         self.Period = Period
         self.Tc = Tc
+        self.K = K
+        
         
     #defining what the name of the class is when an object created is called   
     def __repr__(self):
         return 'Planet Class'
 
 
-# In[270]:
+# In[364]:
 
 
 #Target class loads in system data, gets attributes for multiple planets, and gets data about previous rv data
@@ -66,7 +69,7 @@ class Target():
         if prev_rv_data != None:
             #reads in previous rv data and assigns them variables
             #these will be used to create plots
-            file_prev_rv = pd.read_csv(prev_rv_data, header = 0)
+            file_prev_rv = pd.read_csv(prev_rv_data, header = 14)
             self.prev_rv_data = file_prev_rv
 
             prev_rv_time = file_prev_rv['time'] 
@@ -128,7 +131,7 @@ M_sun = 1.989*10**33
 yr = 3.154*10**7 
 
 
-# In[271]:
+# In[369]:
 
 
 #creates the plots and the simulated data points
@@ -153,10 +156,11 @@ class RV_obs(Target):
     #K value is the semi amplitude of the sin curve that will be generated from the RV data
     def K_value(self, times, planet, star): 
         #takes from the planet class to calculate the K value
-        K = G_sqrt / (np.sqrt(1 - planet.Eccentricity**2)) * planet.Mplanet / M_J * \
-        (star.Mstar / M_sun)**(-2/3) * (planet.Period / yr)**(-1/3)
-        self.K = K
-        return self.K 
+        print (planet.Eccentricity, planet.Mplanet)
+        K = G_sqrt / (np.sqrt(1 - planet.Eccentricity**2)) * planet.Mplanet / a.jupiterMass * \
+        (star.Mstar / a.solMass)**(-2/3) * (planet.Period / a.year)**(-1/3)
+        planet.K = K
+        return planet.K 
     
     #creates the RV values that will be put into the RV plot
     def sim_RVs(self, noise = 0): 
@@ -170,7 +174,7 @@ class RV_obs(Target):
         #loops through the number of planets and goes into the Planet class to get the data 
         for planet in Star.Planets: 
             K = self.K_value(times, planet, Star)
-            
+            print(K)
             #takes from the planet class and the K_value class to calculate the RV data point
             RV_pl = -K*np.sin(2*np.pi*(times - self.t_ref)/planet.Period) + noise*np.random.randn(len(times))
             #adds RVs for every planet together 
@@ -222,17 +226,14 @@ class RV_obs(Target):
         no_pl = self.Target.no_pl
         
         params = radvel.Parameters(2,basis='per tc e w k')
-        for i in range(no_pl): 
+        self.params = params
+        for i in range(1, no_pl+1): 
             time_base = (self.times.min() + self.times.max())/2
-            params[f'per{i}'] = radvel.Parameter(value = Star.Planets[i].Period)
-            if Star.Planets.Tc == np.nan: 
-                tc = np.random.uniform(self.times.min(), self.times.max())
-                params[f'tc{i}'] = radvel.Parameter(value = tc)
-            else: 
-                params[f'tc{i}'] = radvel.Parameter(value = Star.Planets[i].tc)
-            params[f'e{i}'] = radvel.Parameter(value = Star.Planets[i].Eccentricity)
+            params[f'per{i}'] = radvel.Parameter(value = Star.Planets[i-1].Period)
+            params[f'tc{i}'] = radvel.Parameter(value = Star.Planets[i-1].Tc)
+            params[f'e{i}'] = radvel.Parameter(value = Star.Planets[i-1].Eccentricity)
             params[f'w{i}'] = radvel.Parameter(value = np.pi/2)
-            params[f'k{i}'] = radvel.Parameter(value = Star.Planets[i].K)
+            params[f'k{i}'] = radvel.Parameter(value = Star.Planets[i-1].K)
 
         mod = radvel.RVModel(params, time_base=time_base)
         mod.params['dvdt'] = radvel.Parameter(value = 0.02)
@@ -243,8 +244,9 @@ class RV_obs(Target):
         #make a set a gamma_prevtelescope and jit_prevtelescope and a set for the simulated telescope
         #get name of telescope used in previous observations and use that to track uncertainty in telescope 
         #do the same for simulated telescope data 
-        like.params[f'gamma_{self.Target.prev_telescope}'] = radvel.Parameter(value = 0.1)
-        like.params[f'jit_{self.Target.prev_telescope}'] = radvel.Parameter(value = 1.0)
+        if self.Target.prev_rv_data != None: 
+            like.params[f'gamma_{self.Target.prev_telescope}'] = radvel.Parameter(value = 0.1)
+            like.params[f'jit_{self.Target.prev_telescope}'] = radvel.Parameter(value = 1.0)
         like.params[f'gamma_{self.Target.telescope}'] = radvel.Parameter(value=0.1)
         like.params[f'jit_{self.Target.telescope}'] = radvel.Parameter(value=1.0)
         
@@ -252,16 +254,22 @@ class RV_obs(Target):
         #want user to pass in a list of parameters they want to vary 
         
         #for loop is for each planet's parameters 
-        for i in range(len(no_pl)): 
-            like.params[f'secosw{i}'].vary = False
-            like.params[f'sesinw{i}'].vary = False
+        for i in range(1, no_pl+1): 
+            #like.params[f'secosw{i}'].vary = False
+            #like.params[f'sesinw{i}'].vary = False
+            like.params[f'e{i}'].vary = True
             like.params[f'per{i}'].vary = False
             like.params[f'tc{i}'].vary = False
-        #parameters that are for the previous telescope from previous data and the current Target telescope    
-        like.params[f'gamma_{self.Target.prev_telescope}'].vary = False
-        like.params[f'jit_{self.Target.prev_telescope}'].vary = False
+            like.params[f'k{i}'].vary = True
+            like.params[f'w{i}'].vary = True
+        #parameters that are for the previous telescope from previous data and the current Target telescope
+        if self.Target.prev_rv_data != None:
+            like.params[f'gamma_{self.Target.prev_telescope}'].vary = False
+            like.params[f'jit_{self.Target.prev_telescope}'].vary = False
         like.params[f'gamma_{self.Target.telescope}'].vary = False
         like.params[f'jit_{self.Target.telescope}'].vary = False
+        
+        # Set up priors
         
         #looping though array of parameters to vary and setting them equal to true 
         if len(params_to_vary) > 0:
@@ -269,7 +277,7 @@ class RV_obs(Target):
                 like.params[params_to_vary[i]].vary = True
         
         '''
-        the rest of the code below is from the intro to astro github tutorial 
+        the rest of the code below is from the intro to astro github tutorial/radvel K2-24 tutorial  
         ''' 
         #initializes radvel.Posterior object 
         post = radvel.posterior.Posterior(like)
@@ -281,13 +289,133 @@ class RV_obs(Target):
             method='Nelder-Mead',           # Powell also works
             )
         
-        #ready-made plots that radvel has
-        matplotlib.rcParams['font.size'] = 12
+        #ready-made plots that radvel has, from intro to astro tutorial on github
 
         RVPlot = orbit_plots.MultipanelPlot(post)
         RVPlot.plot_multipanel()
-
-        matplotlib.rcParams['font.size'] = 18
         return RVPlot
 
 
+# In[374]:
+
+
+class cadence(RV_obs): 
+    def __init__(self, RV_obs): 
+        self.RV_obs = RV_obs
+
+    #this function will phase fold 
+    def phase_fold(self): 
+        #converts JD time to orbital phase
+        #still not sure what num planet is, ask emma about this 
+        phase = radvel.utils.t_to_phase(self.RV_obs.params, self.RV_obs.Target.prev_rv_time, num_planet = 1)
+        radvel.plot_phase_fold()
+    
+    #finding gaps in the phases 
+    def phase_gaps(self): 
+        distance = []
+        #taking the difference between two points of the phase and adding them to an array
+        for i in phase: 
+            #since we are subtracting from the next iteration, if the ith value is equal to the length of the 
+            #phase we want to break out of the loop 
+            if i == len(phase): 
+                break
+            else: 
+                diff = phase[i+1] - phase[i]
+                distance = np.append(distance, diff)
+        #averaging out the distances between each of the phases
+        avg_distance = np.mean(distance)
+        self.avg_distance = avg_distance 
+            
+       
+        #loops through the distance array and flags the phase that relates to the distance  
+        flagged_phase = [] 
+        for i in distance: 
+            #if the distance between the phases is longer than the average distance between the phases add them to 
+            #a separate array and flag both of the phases 
+            if distance[i] > self.avg_distance[i]: 
+                flagged_phase = np.append(flagged_phase, phase[i])
+                flagged_phase = np.append(flagged_phase, phase[i+1])
+        self.flagged_phase = flagged_phase
+    
+    def JD_calculation(year, month, day)
+       # calculation is from explanation of JD Calculation
+        for i in day: 
+            a = (14 - month[i]) / 12
+            y = year[i] + 4800 – a
+            m = month[i] + 12a – 3
+            JD = day[i] + (153*m + 2) / 5 + 365*y + y/4 + y/100 + y/400 - 32045
+        return JD
+    
+    #coverts the semester into JD
+    def JD_convert(semester): 
+        #ex of semester will be 2023A
+        self.semester = semester 
+        if semester == 'A': 
+            semester_year = int(semester.split('A')[0])
+            sem_beginning = f'2/1/{semester_year}'
+            sem_end = f'7/31/{semester_year}'
+            year_end = semester_year
+        if semester == 'B': 
+            semester_year = semester.split('B')[0]
+            sem_beginning = f'8/1/{semester_year}'
+            sem_end = f'1/31/{semester_year+1}'
+            year_end = semester_year+1
+            
+        year_beg = int(semester_year) 
+        month_beg = int(sem_beginning.split('/')[0])
+        month_end = int(sem_end.split('/')[0])
+        day_beg = int(sem_beginning.split('/')[1])
+        day_end = int(sem_end.split('/')[1])
+        
+        #getting all of the possible JD dates for observation during this semester by calling JD_calculation
+        JD_beg = JD_calculation(year_beg, month_beg, day_beg)
+        self.JD_beg = JD_beg
+        JD_end = JD_calculation(year_end, month_end, day_end)
+        self.JD_end = JD_end
+        possible_days = np.linspace(JD_beg, JD_end)
+        self.possible_days = possible_days
+        
+        return self.possible_days, self.JD_beg, self.JD_end
+    
+    #the next function will be able to tell you which cadence is the best to observe in 
+    def cadence_optimize(self): 
+        #loop through the flagged phases and creates observation times based on those phases 
+        phase_obs = []
+        for i in flagged_phase: 
+            if i == len(flagged_phase): 
+                break
+            else: 
+                #the window is the period in which you would be able to observe in 
+                #we create a list of values from the flagged phases and add them to an array 
+                window = np.linspace(flagged_phase[i], flagged_phase[i+1], num = RV_obs.self.No_obs)
+                phase_obs = np.append(phase_obs, window)
+                i += 2
+        #calculating the days from conjunction the flagged phases are at 
+        #since the empheremis is based on the first planet, we are using the first planet's period and Tc
+        phase_days = phase_obs * RV_obs.Star.Planet.Period[1]
+        period_days = phase_days + RV_obs.Star.Planet.Tc[1]
+        
+        #future observing times
+        '''while bleep < this and > this: 
+            future tc = Tc + period
+        future_tc + period_days 
+        '''
+        #this will give the times within the semester where the time of conjunction will occur 
+        future_tc = 0 
+        list_future_tc = []
+        while future_tc < self.JD_end: 
+            future_tc = RV_obs.Star.Planet.Period[1] + RV_obs.Star.Planet.Tc[1]
+            #creates list of times where future conjunction will occur within semester 
+            if future_tc < self.JD_end and future_tc >= self.JD_beg: 
+                list_future_tc = np.append(list_future_tc, future_tc)
+        #adding the days where you should observe from days of conjunction to the future days of conjunction 
+        for i in list_future_tc: 
+            #making sure that the observed days are within the semester user input
+            if list_future_tc[i] + period_days > self.JD_end: 
+                break
+            else: 
+                obs_date = list_future_tc[i] + period_days
+                observe_times = np.append(observe_times, obs_date)
+                
+        #days where user should observe
+        return observe_times
