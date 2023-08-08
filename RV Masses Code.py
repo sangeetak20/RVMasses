@@ -395,11 +395,6 @@ class cadence(RV_obs):
         phase_days = phase_obs * RV_obs.Star.Planet.Period[1]
         period_days = phase_days + RV_obs.Star.Planet.Tc[1]
         
-        #future observing times
-        '''while bleep < this and > this: 
-            future tc = Tc + period
-        future_tc + period_days 
-        '''
         #this will give the times within the semester where the time of conjunction will occur 
         future_tc = 0 
         list_future_tc = []
