@@ -36,7 +36,6 @@ class Planet():
         self.Tc = Tc
         self.K = K
         
-        
     #defining what the name of the class is when an object created is called   
     def __repr__(self):
         return 'Planet Class'
@@ -52,7 +51,6 @@ class Target():
     def __init__(self, file, telescope, prev_rv_data = None): 
         #inherits planet class and creates empty array so that planet info will be stored
         self.Planets = []
-        
         self.file = file
         
         #opens the file and reads it in 
@@ -296,7 +294,7 @@ class RV_obs(Target):
         return RVPlot
 
 
-# In[374]:
+# In[412]:
 
 
 class cadence(RV_obs): 
@@ -308,8 +306,9 @@ class cadence(RV_obs):
         #converts JD time to orbital phase
         #still not sure what num planet is, ask emma about this 
         phase = radvel.utils.t_to_phase(self.RV_obs.params, self.RV_obs.Target.prev_rv_time, num_planet = 1)
-        radvel.plot_phase_fold()
-    
+        self.phase = phase
+        #radvel.plot_phase_fold()
+        return self.phase
     #finding gaps in the phases 
     def phase_gaps(self): 
         distance = []
@@ -336,74 +335,87 @@ class cadence(RV_obs):
                 flagged_phase = np.append(flagged_phase, phase[i])
                 flagged_phase = np.append(flagged_phase, phase[i+1])
         self.flagged_phase = flagged_phase
+        return self.flagged_phase
     
-    def JD_calculation(year, month, day)
+    def JD_calculation(self, year, month, day):
        # calculation is from explanation of JD Calculation
         for i in day: 
             a = (14 - month[i]) / 12
-            y = year[i] + 4800 – a
-            m = month[i] + 12a – 3
-            JD = day[i] + (153*m + 2) / 5 + 365*y + y/4 + y/100 + y/400 - 32045
+            y = year[i] + 4800 - a
+            m = month[i] + 12*a - 3
+            JD = day[i] + ((153*m + 2)/5) + (365*y) + (y/4) + (y/100) + (y/400) - 32045
         return JD
     
     #coverts the semester into JD
-    def JD_convert(semester): 
-        #ex of semester will be 2023A
+    def JD_convert(self, semester): 
+        #ex of semester would be 2023A or 2023B
         self.semester = semester 
-        if semester == 'A': 
+        if semester[4] == 'A': 
+            #beginning of A semester is 2/1, end is 7/31
             semester_year = int(semester.split('A')[0])
-            sem_beginning = f'2/1/{semester_year}'
-            sem_end = f'7/31/{semester_year}'
-            year_end = semester_year
-        if semester == 'B': 
+            year_beg = int(semester_year) 
+            year_end = int(semester_year)
+            month_beg = 2
+            month_end = 7
+            day_beg = 1
+            day_end = 31
+        if semester[4] == 'B': 
+            #beginning of B semester is 8/1, end is 1/31/year+1
             semester_year = semester.split('B')[0]
-            sem_beginning = f'8/1/{semester_year}'
-            sem_end = f'1/31/{semester_year+1}'
-            year_end = semester_year+1
+            year_end = int(semester_year+1)
+            year_beg = int(semester_year) 
+            month_beg = 8
+            month_end = 1
+            day_beg = 1
+            day_end = 31
+        else: 
+            print("Please enter a valid semester.")
             
-        year_beg = int(semester_year) 
-        month_beg = int(sem_beginning.split('/')[0])
-        month_end = int(sem_end.split('/')[0])
-        day_beg = int(sem_beginning.split('/')[1])
-        day_end = int(sem_end.split('/')[1])
         
         #getting all of the possible JD dates for observation during this semester by calling JD_calculation
         JD_beg = JD_calculation(year_beg, month_beg, day_beg)
         self.JD_beg = JD_beg
         JD_end = JD_calculation(year_end, month_end, day_end)
         self.JD_end = JD_end
-        possible_days = np.linspace(JD_beg, JD_end)
+        
+        #creating array of every single day in semester which varies based on semester
+        if year_end != year_beg: 
+            possible_days = np.linspace(JD_beg, JD_end, num = 183)
+        else: 
+            possible_days = np.linspace(JD_beg, JD_end, num = 180)
         self.possible_days = possible_days
         
-        return self.possible_days, self.JD_beg, self.JD_end
+        return self.JD_beg, self.JD_end, self.possible_days
     
     #the next function will be able to tell you which cadence is the best to observe in 
     def cadence_optimize(self): 
         #loop through the flagged phases and creates observation times based on those phases 
         phase_obs = []
-        for i in flagged_phase: 
-            if i == len(flagged_phase): 
+        for i in self.flagged_phase: 
+            if i == len(self.flagged_phase): 
                 break
             else: 
                 #the window is the period in which you would be able to observe in 
                 #we create a list of values from the flagged phases and add them to an array 
-                window = np.linspace(flagged_phase[i], flagged_phase[i+1], num = RV_obs.self.No_obs)
+                window = np.linspace(self.flagged_phase[i], self.flagged_phase[i+1], num = RV_obs.self.No_obs)
                 phase_obs = np.append(phase_obs, window)
                 i += 2
-        #calculating the days from conjunction the flagged phases are at 
-        #since the empheremis is based on the first planet, we are using the first planet's period and Tc
+        
+        #calculating the days from conjunction the flagged phases are at since the empheremis is 
+        #based on the first planet, we are using the first planet's period and Tc
         phase_days = phase_obs * RV_obs.Star.Planet.Period[1]
         period_days = phase_days + RV_obs.Star.Planet.Tc[1]
         
         #this will give the times within the semester where the time of conjunction will occur 
         future_tc = 0 
-        list_future_tc = []
         while future_tc < self.JD_end: 
             future_tc = RV_obs.Star.Planet.Period[1] + RV_obs.Star.Planet.Tc[1]
             #creates list of times where future conjunction will occur within semester 
             if future_tc < self.JD_end and future_tc >= self.JD_beg: 
                 list_future_tc = np.append(list_future_tc, future_tc)
+        
         #adding the days where you should observe from days of conjunction to the future days of conjunction 
+        list_future_tc = []
         for i in list_future_tc: 
             #making sure that the observed days are within the semester user input
             if list_future_tc[i] + period_days > self.JD_end: 
